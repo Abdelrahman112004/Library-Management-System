@@ -2,7 +2,9 @@ package library;
 
 
 
-public class Service {
+import java.io.Serializable;
+
+public class Service implements Serializable {
     private boolean printing;
     private double printingCostPerPage;
     private boolean proofReading;

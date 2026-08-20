@@ -7,7 +7,7 @@ import java.time.LocalDate;
 
 public class Item implements Serializable{
     private int ID;
-    private static String title;
+    private String title;
     private Author author;
     private double price;
     private int pages;
@@ -32,7 +32,7 @@ public class Item implements Serializable{
         this.ID = ID;
     }
 
-    public static String getTitle() {
+    public String getTitle() {
         return title;
     }
 

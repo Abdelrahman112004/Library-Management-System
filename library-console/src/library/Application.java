@@ -8,6 +8,14 @@ import java.io.*;
 
 
 public class Application implements Serializable {
+	// One Scanner for the whole program. Creating a new Scanner per method
+	// makes each one buffer ahead and swallow input the next one needed.
+	//
+	// Locale.ROOT forces "10.5" to parse as a decimal. Scanner otherwise
+	// follows the JVM format locale, which on some Windows regions expects a
+	// different decimal separator and throws InputMismatchException instead.
+	private static final Scanner SCANNER = new Scanner(System.in).useLocale(java.util.Locale.ROOT);
+
 	private static ArrayList<Item> items = new ArrayList<Item>();
 	private static ArrayList<Author> authors =  new ArrayList<Author>();
 	private static ArrayList<Customer> customers = new ArrayList<Customer>();
@@ -17,13 +25,14 @@ public class Application implements Serializable {
 		loadItemsFromFile();
 
 
-		Scanner scanner = new Scanner(System.in);
+		Scanner scanner = SCANNER;
 
 		int choice;
 		do {
 			displayMenu();
 			System.out.print("Enter your choice: ");
 			choice = scanner.nextInt();
+			scanner.nextLine(); // Consume the rest of the menu-choice line
 
 			switch (choice) {
 			case 1:
@@ -39,43 +48,44 @@ public class Application implements Serializable {
 				addcustomer();
 				break;
 			case 5:
-				Scanner input = new Scanner(System.in);
+				Scanner input = SCANNER;
 				System.out.println("Enter customer id ");
 				String id=input.nextLine();
 				updateExistingCustomer(id);
 				break;
 			case 6:
-				Scanner input3 = new Scanner(System.in);
+				Scanner input3 = SCANNER;
 				System.out.println("Enter customer id");
 				String delete = input3.nextLine();
 				deleteExistingcustomer(delete);
 				break;
 			case 7:
 				System.out.println("Enter customer id ");
-				Scanner enter = new Scanner(System.in);
+				Scanner enter = SCANNER;
 				String cuId = enter.nextLine();
 
 				System.out.println("item id ");
 				int itid=enter.nextInt();
+				enter.nextLine(); // Consume the newline before the service prompts
 				borrowTransaction(cuId, itid);
 
 				break;
 			case 8:
 				System.out.println("Enter id to return the book: ");
-				Scanner input1 = new Scanner(System.in);
+				Scanner input1 = SCANNER;
 				String id1 = input1.nextLine();
 				returnTransaction(id1);
 				break;
 			case 9:
 				
 				System.out.println("Enter customer id: ");
-				Scanner inputcs = new Scanner(System.in);
+				Scanner inputcs = SCANNER;
 				String cusid = inputcs.nextLine();
 				ListItemsnotyetreturned(cusid);
 				break;
 			case 10:
 				System.out.println("Enter last name: ");
-				Scanner inputname = new Scanner(System.in);
+				Scanner inputname = SCANNER;
 				String lastname = inputname.nextLine();
 				listAllAuthorPublications(lastname);
 				break;
@@ -179,7 +189,7 @@ public class Application implements Serializable {
 	}
 	public static void addNewItem() {
 		int itemId = generateUniqueItemID();
-		Scanner scanner = new Scanner(System.in);
+		Scanner scanner = SCANNER;
 		System.out.println("Enter the number of the Item that you would like to add (1-4): \n1. Add a new Book \n2. Add a new Scientific journal"
 				+ "\n 3. Add a new Magazine \n4. Add a new NewsPaper f");
 
@@ -303,7 +313,7 @@ public class Application implements Serializable {
 		}
 	}
 	private static void updateExistingItem() {
-		Scanner scanner = new Scanner(System.in);
+		Scanner scanner = SCANNER;
 
 		System.out.println("Choose the item type to update:");
 		System.out.println("1. Book");
@@ -336,17 +346,21 @@ public class Application implements Serializable {
 	}
 
 	public static boolean deleteItemByTitle(String title) {
-		for (Item item : items) {
-			if (item.getTitle().equalsIgnoreCase(title)) {
-				items.remove(item);
-
-				return true; 
+		// Iterator.remove() avoids the ConcurrentModificationException that
+		// removing from the list inside a for-each would raise.
+		java.util.Iterator<Item> it = items.iterator();
+		while (it.hasNext()) {
+			Item item = it.next();
+			if (item.getTitle().trim().equalsIgnoreCase(title.trim())) {
+				it.remove();
+				saveItemsToFile();
+				return true;
 			}
 		}
-		return false; 
+		return false;
 	}
 	private static void deleteExistingItem() {
-		Scanner scanner = new Scanner(System.in);
+		Scanner scanner = SCANNER;
 
 		displayAllItems();
 
@@ -364,38 +378,35 @@ public class Application implements Serializable {
 
 
 	public static void saveItemsToFile() {
-		try (ObjectOutputStream objout = new ObjectOutputStream(new FileOutputStream("items.txt", true))) {
-			for (Item item : items) {
-				objout.writeObject(item);
-			}
+		// Overwrite rather than append: appending a second stream header to an
+		// existing file corrupts it, and re-writing every item duplicates them.
+		try (ObjectOutputStream objout = new ObjectOutputStream(new FileOutputStream("items.txt"))) {
+			objout.writeObject(items);
 			System.out.println("Items saved to file successfully!");
 		} catch (IOException e) {
-			e.printStackTrace(); 
+			e.printStackTrace();
 		}
 	}
 
+	@SuppressWarnings("unchecked")
 	public static void loadItemsFromFile() {
 		items = new ArrayList<>();
 
 		try (ObjectInputStream objin = new ObjectInputStream(new FileInputStream("items.txt"))) {
-			while (true) {
-				try {
-					Object obj = objin.readObject();
-					if (obj instanceof Item) {
-						items.add((Item) obj);
-					}
-				} catch (ClassNotFoundException e) {
-					e.printStackTrace();
-				}
+			Object obj = objin.readObject();
+			if (obj instanceof ArrayList) {
+				items = (ArrayList<Item>) obj;
 			}
-		} catch (IOException e) {
 			System.out.println("Items loaded from file successfully!");
+		} catch (FileNotFoundException e) {
+			System.out.println("No existing item data found");
+		} catch (IOException | ClassNotFoundException e) {
+			System.out.println("Could not read items file: " + e.getMessage());
 		}
 	}
 
 	public static Item findItemByTitle(String title) {
 		for (Item item : items) {
-			System.out.println("Checking title: '" + item.getTitle().trim() + "'");
 			if (item.getTitle().trim().equalsIgnoreCase(title.trim())) {
 				return item;
 			}
@@ -403,72 +414,65 @@ public class Application implements Serializable {
 		return null;
 	}
 	public static void updateTitle(Item item) {
-		Scanner scanner = new Scanner(System.in);
+		Scanner scanner = SCANNER;
 		System.out.print("Enter the new title: ");
 		String newTitle = scanner.nextLine();
 		item.setTitle(newTitle);
 		System.out.println("Title updated successfully!");
 	}
+	// Note: none of these close their Scanner. Closing a Scanner wrapping
+	// System.in closes stdin for the whole program, so every later prompt
+	// would fail with NoSuchElementException.
 	public static void updateAuthorFirstName(Item item) {
-		Scanner scanner = new Scanner(System.in);
+		Scanner scanner = SCANNER;
 		System.out.print("Enter the new author's first name: ");
 		String newFirstName = scanner.nextLine();
-		scanner.nextLine();
 		item.getAuthor().setFirstName(newFirstName);
 		System.out.println("Author's first name updated successfully!");
 	}
 	public static void updateAuthorLastName(Item item) {
-		Scanner scanner = new Scanner(System.in);
+		Scanner scanner = SCANNER;
 		System.out.print("Enter the new author's last name: ");
 		String newLastName = scanner.nextLine();
-		scanner.nextLine();
 		item.getAuthor().setLastName(newLastName);
 		System.out.println("Author's last name updated successfully!");
-		scanner.close();
 	}
 	public static void updateAuthorDOB(Item item) {
-		Scanner scanner = new Scanner(System.in);
+		Scanner scanner = SCANNER;
 		System.out.print("Enter the new author's date of birth (YYYY-MM-DD): ");
 		String newDateOfBirthStr = scanner.nextLine();
-		scanner.nextLine();
 		LocalDate newDateOfBirth = LocalDate.parse(newDateOfBirthStr);
 		item.getAuthor().setDateOfBirth(newDateOfBirth);
 		System.out.println("Author's date of birth updated successfully!");
-		scanner.close();
 	}
 	public static void updatePrice(Item item) {
-		Scanner scanner = new Scanner(System.in);
+		Scanner scanner = SCANNER;
 		System.out.print("Enter the new price: ");
 		double newPrice = scanner.nextDouble();
-		scanner.nextLine();
 		item.setPrice(newPrice);
-		System.out.println("Title updated successfully!");
-		scanner.close();
+		System.out.println("Price updated successfully!");
 	}
 	public static void updatePages(Item item) {
-		Scanner scanner = new Scanner(System.in);
+		Scanner scanner = SCANNER;
 		System.out.print("Enter the new number of pages: ");
 		int newPages = scanner.nextInt();
 		item.setPages(newPages);
 		System.out.println("Number of Pages updated successfully!");
-		scanner.close();
 	}
 	public static void updateDueDays(Item item) {
-		Scanner scanner = new Scanner(System.in);
+		Scanner scanner = SCANNER;
 		System.out.print("Enter the new due days: ");
-		double newPrice = scanner.nextDouble();
-		item.setPrice(newPrice);
-		System.out.println("Title updated successfully!");
-		scanner.close();
+		int newDueDays = scanner.nextInt();
+		item.setDueDays(newDueDays);
+		System.out.println("Due days updated successfully!");
 	}
 	public static void updatePublishingDate(Item item) {
-		Scanner scanner = new Scanner(System.in);
+		Scanner scanner = SCANNER;
 		System.out.print("Enter the new publishing date (YYYY-MM-DD): ");
 		String newPublishingDateStr = scanner.nextLine();
 		LocalDate newPublishingDate = LocalDate.parse(newPublishingDateStr);
 		item.setPublishingDate(newPublishingDate);
-		System.out.println("Title updated successfully!");
-		scanner.close();
+		System.out.println("Publishing date updated successfully!");
 	}
 	public static void updateItem(Item item, int choice) {
 		switch (choice) {
@@ -512,146 +516,150 @@ public class Application implements Serializable {
 		System.out.println("8. Publishing Date (YYYY-MM-DD)");
 	}
 	public static void updateBook(String title) {
-		Book bookToUpdate = (Book) findItemByTitle(title);
+		Item found = findItemByTitle(title);
 
-		if (bookToUpdate != null) {
-			System.out.println("Current information for the book:");
-			System.out.println(bookToUpdate);
-
-
-			Scanner scanner = new Scanner(System.in);
-			showMenu();
-
-			System.out.println("9. ISBN");
-			System.out.println("10. Genre");
-			System.out.println("11. Description");
-			System.out.print("Enter your choice: ");
-
-			int choice = scanner.nextInt();
-			scanner.nextLine(); // Consume the newline character
-
-			if (choice>=1 && choice<=8) {
-				updateItem(bookToUpdate, choice);
-			} else if (choice == 9) {
-				System.out.print("Enter the new ISBN: ");
-				String newIsbn = scanner.nextLine();
-				bookToUpdate.setISBN(newIsbn);
-			} else if (choice == 10) {
-				System.out.print("Enter the new genre: ");
-				String newGenre = scanner.nextLine();
-				bookToUpdate.setGenre(newGenre);
-			} else if (choice == 11) {
-				System.out.print("Enter the new description: ");
-				String newDescription = scanner.nextLine();
-				bookToUpdate.setDescription(newDescription);
-
-
-
-				System.out.println("Book updated successfully!");
-			} else {
-				System.out.println("Book not found.");
-				scanner.close();
-			}
+		// instanceof guard: a title belonging to another item type used to
+		// raise a ClassCastException here.
+		if (!(found instanceof Book)) {
+			System.out.println("Book not found.");
+			return;
 		}
+		Book bookToUpdate = (Book) found;
+
+		System.out.println("Current information for the book:");
+		System.out.println(bookToUpdate);
+
+		Scanner scanner = SCANNER;
+		showMenu();
+
+		System.out.println("9. ISBN");
+		System.out.println("10. Genre");
+		System.out.println("11. Description");
+		System.out.print("Enter your choice: ");
+
+		int choice = scanner.nextInt();
+		scanner.nextLine(); // Consume the newline character
+
+		if (choice>=1 && choice<=8) {
+			updateItem(bookToUpdate, choice);
+		} else if (choice == 9) {
+			System.out.print("Enter the new ISBN: ");
+			bookToUpdate.setISBN(scanner.nextLine());
+			System.out.println("Book updated successfully!");
+		} else if (choice == 10) {
+			System.out.print("Enter the new genre: ");
+			bookToUpdate.setGenre(scanner.nextLine());
+			System.out.println("Book updated successfully!");
+		} else if (choice == 11) {
+			System.out.print("Enter the new description: ");
+			bookToUpdate.setDescription(scanner.nextLine());
+			System.out.println("Book updated successfully!");
+		} else {
+			System.out.println("Invalid choice.");
+		}
+		saveItemsToFile();
 	}
 	public static void updateScientificJournal(String title) {
-		ScientificJournal journalToUpdate = (ScientificJournal) findItemByTitle(title);
+		Item found = findItemByTitle(title);
 
-		if (journalToUpdate != null) {
-			System.out.println("Current information for the scientific journal:");
-			System.out.println(journalToUpdate);
-
-			Scanner scanner = new Scanner(System.in);
-			showMenu();
-			System.out.println("Enter the number of the attribute you want to update:");
-			System.out.println("1. Publication Frequency");
-			System.out.println("2. Impact Factor");
-			System.out.println("3. Other Attribute");  
-			System.out.print("Enter your choice: ");
-
-			int choice = scanner.nextInt();
-			scanner.nextLine(); // Consume the newline character
-			if (choice>=1 && choice<=7) {
-				updateItem(journalToUpdate, choice);
-			} else if (choice == 8) {
-				System.out.print("Enter the new publication frequency: ");
-				String newFrequency = scanner.nextLine();
-				journalToUpdate.setPublicationFrequency(newFrequency);
-			} else if (choice == 9) {
-				System.out.print("Enter the new impact factor: ");
-				double newImpactFactor;
-
-				newImpactFactor = Double.parseDouble(scanner.nextLine());
-				journalToUpdate.setImpactFactor(newImpactFactor);
-
-				System.out.println("Scientific journal updated successfully!");
-			} else {
-				System.out.println("Scientific journal not found.");
-				scanner.close();
-			}
+		if (!(found instanceof ScientificJournal)) {
+			System.out.println("Scientific journal not found.");
+			return;
 		}
+		ScientificJournal journalToUpdate = (ScientificJournal) found;
+
+		System.out.println("Current information for the scientific journal:");
+		System.out.println(journalToUpdate);
+
+		Scanner scanner = SCANNER;
+		showMenu();
+		// Numbered 9/10 to follow on from the shared 1-8 menu above; the
+		// printed numbers used to disagree with the cases handled below.
+		System.out.println("9. Publication Frequency");
+		System.out.println("10. Impact Factor");
+		System.out.print("Enter your choice: ");
+
+		int choice = scanner.nextInt();
+		scanner.nextLine(); // Consume the newline character
+
+		if (choice>=1 && choice<=8) {
+			updateItem(journalToUpdate, choice);
+		} else if (choice == 9) {
+			System.out.print("Enter the new publication frequency: ");
+			journalToUpdate.setPublicationFrequency(scanner.nextLine());
+			System.out.println("Scientific journal updated successfully!");
+		} else if (choice == 10) {
+			System.out.print("Enter the new impact factor: ");
+			journalToUpdate.setImpactFactor(Double.parseDouble(scanner.nextLine()));
+			System.out.println("Scientific journal updated successfully!");
+		} else {
+			System.out.println("Invalid choice.");
+		}
+		saveItemsToFile();
 	}
 	public static void updateMagazine(String title) {
-		Magazine magazineToUpdate = (Magazine) findItemByTitle(title);
+		Item found = findItemByTitle(title);
 
-		if (magazineToUpdate != null) {
-			System.out.println("Current information for the magazine:");
-			System.out.println(magazineToUpdate);
-
-
-			Scanner scanner = new Scanner(System.in);
-			showMenu();
-			System.out.println("1. Issue Number");
-			System.out.print("Enter your choice: ");
-
-
-			int choice = scanner.nextInt();
-			scanner.nextLine(); 
-
-			if (choice>=1 && choice<=7) {
-				updateItem(magazineToUpdate, choice);
-			}else if (choice == 8) {
-				System.out.print("Enter the new issue number: ");
-				int newIssueNumber;
-				newIssueNumber = Integer.parseInt(scanner.nextLine());
-				magazineToUpdate.setIssueNumber(newIssueNumber);
-
-				System.out.println("magazine updated successfully!");
-			} else {
-				System.out.println("magazine not found.");
-				scanner.close();
-			}
+		if (!(found instanceof Magazine)) {
+			System.out.println("Magazine not found.");
+			return;
 		}
+		Magazine magazineToUpdate = (Magazine) found;
+
+		System.out.println("Current information for the magazine:");
+		System.out.println(magazineToUpdate);
+
+		Scanner scanner = SCANNER;
+		showMenu();
+		System.out.println("9. Issue Number");
+		System.out.print("Enter your choice: ");
+
+		int choice = scanner.nextInt();
+		scanner.nextLine();
+
+		if (choice>=1 && choice<=8) {
+			updateItem(magazineToUpdate, choice);
+		} else if (choice == 9) {
+			System.out.print("Enter the new issue number: ");
+			magazineToUpdate.setIssueNumber(Integer.parseInt(scanner.nextLine()));
+			System.out.println("Magazine updated successfully!");
+		} else {
+			System.out.println("Invalid choice.");
+		}
+		saveItemsToFile();
 	}
 	public static void updateNewspaper(String title) {
-		NewsPaper newspaperToUpdate = (NewsPaper) findItemByTitle(title);
+		Item found = findItemByTitle(title);
 
-		if (newspaperToUpdate != null) {
-			System.out.println("Current information for the newspaper:");
-			System.out.println(newspaperToUpdate);
-
-
-			Scanner scanner = new Scanner(System.in);
-			showMenu();
-			System.out.println("8. Issue Language");
-			System.out.print("Enter your choice: ");
-
-
-			int choice = scanner.nextInt();
-			scanner.nextLine(); // Consume the newline character
-
-			if (choice>=1 && choice<=8) {
-				updateItem(newspaperToUpdate, choice);
-			}if (choice == 9) {
-				System.out.print("Enter the new issue language: ");
-				String newIssueLanguage = scanner.nextLine();
-				newspaperToUpdate.setIssueLanguage(newIssueLanguage);
-				System.out.println("newspaper updated successfully!");
-			} else {
-				System.out.println("newspaper not found.");
-				scanner.close();
-			}
+		if (!(found instanceof NewsPaper)) {
+			System.out.println("Newspaper not found.");
+			return;
 		}
+		NewsPaper newspaperToUpdate = (NewsPaper) found;
+
+		System.out.println("Current information for the newspaper:");
+		System.out.println(newspaperToUpdate);
+
+		Scanner scanner = SCANNER;
+		showMenu();
+		System.out.println("9. Issue Language");
+		System.out.print("Enter your choice: ");
+
+		int choice = scanner.nextInt();
+		scanner.nextLine(); // Consume the newline character
+
+		// "else if", not "if": the missing else meant choices 1-8 fell through
+		// and printed "newspaper not found" after updating successfully.
+		if (choice>=1 && choice<=8) {
+			updateItem(newspaperToUpdate, choice);
+		} else if (choice == 9) {
+			System.out.print("Enter the new issue language: ");
+			newspaperToUpdate.setIssueLanguage(scanner.nextLine());
+			System.out.println("Newspaper updated successfully!");
+		} else {
+			System.out.println("Invalid choice.");
+		}
+		saveItemsToFile();
 	}
 	public static void displayAllItems() {
 		if (items.isEmpty()) {
@@ -690,7 +698,7 @@ public class Application implements Serializable {
 		readCustomersfromfile();
 		String cuId =generateUniqueCustomerID();
 		System.out.println("Your customer ID :"+cuId);
-		Scanner in = new Scanner(System.in);
+		Scanner in = SCANNER;
 		System.out.println("Enter customer information:");			
 		System.out.print("customer first name:");
 		String firstName = in.nextLine();
@@ -757,7 +765,7 @@ public class Application implements Serializable {
 		}
 	}
 	public static void updateCustomer(Customer customer) {
-		Scanner scanner = new Scanner(System.in);
+		Scanner scanner = SCANNER;
 		System.out.println("What do you want to update?"+"\n"+"1-firstname"+"\n"+
 				"2-Lastname"+"\n"+"3-dateOfBirth"+"\n"+"4-address"+"\n"+"5-phonenumber"+"\n"+"6-Student status");
 		String updt=scanner.nextLine();
@@ -869,41 +877,35 @@ public class Application implements Serializable {
 
 	public static void returnTransaction(String transactionID) {
 		readTransactionsFromFile();
+
+		// A transaction ID identifies exactly one transaction, so find it and
+		// return it. The old version wrapped it in a one-element list, tested
+		// for size()==0 (never true) and then asked which one to return.
 		for (Transaction transaction : transactions) {
-			if (transaction!= null) {
-				if(transaction.getTransactionID().equalsIgnoreCase(transactionID) && transaction.getCheckInDate()==null ) {
-
-					ArrayList<Transaction> returns= new ArrayList<Transaction>();
-					returns.add(transaction);
-					if (returns.size()==0) {
-						transaction.setCheckInDate(LocalDate.now());
-						System.out.println(transaction.toString());
-					
-
-					}else  {
-						System.out.println(returns.toString());
-
-						System.out.println("which one want to return?[0,1,..]");
-						Scanner scanner = new Scanner(System.in);
-						int treturn=scanner.nextInt();
-						returns.get(treturn).setCheckInDate(LocalDate.now());
-					}}else {
-//						System.out.println("Trans id: "+transactionID);
-//						System.out.println("transaction.getTransactionID(): "+transaction.getTransactionID());
-						System.out.println("the item is already not borrowed");
-					}
+			if (transaction == null) {
+				continue;
+			}
+			if (transaction.getTransactionID().equalsIgnoreCase(transactionID)) {
+				if (transaction.getCheckInDate() != null) {
+					System.out.println("This item has already been returned.");
+					return;
+				}
+				transaction.setCheckInDate(LocalDate.now());
+				saveTransactionsToFile();
+				System.out.println("Item returned successfully!");
+				System.out.println(transaction);
+				return;
 			}
 		}
 
-		saveTransactionsToFile();
-
+		System.out.println("No transaction found with ID: " + transactionID);
 	}
 
 
 	private static Service setservice(){
 		System.out.println("do you want another services yes or no ");
 
-		Scanner scanner = new Scanner(System.in);
+		Scanner scanner = SCANNER;
 		String in= scanner.nextLine();
 		if(in.equalsIgnoreCase("no")) {
 			return null;
@@ -1031,33 +1033,53 @@ public class Application implements Serializable {
 				}
 			}if (item instanceof Magazine) {
 				Magazine magazine = (Magazine) item;
-				System.out.println("Title: " + item.getTitle() +
-						", Issue Number: " + magazine.getIssueNumber());
+				Author author = magazine.getAuthor();
+
+				// Filter by author last name here too - previously every
+				// magazine was listed regardless of who was searched for.
+				if (author != null && author.getLastName().equalsIgnoreCase(authorLastName)) {
+					System.out.println("Title: " + item.getTitle() +
+							", Author: " + author.getFirstName() + " " + author.getLastName() +
+							", Issue Number: " + magazine.getIssueNumber());
+				}
 			}if (item instanceof NewsPaper) {
 				NewsPaper newspaper = (NewsPaper) item;
-				System.out.println("Title: " + item.getTitle() +
-						", Issue Language: " + newspaper.getIssueLanguage());
+				Author author = newspaper.getAuthor();
+
+				if (author != null && author.getLastName().equalsIgnoreCase(authorLastName)) {
+					System.out.println("Title: " + item.getTitle() +
+							", Author: " + author.getFirstName() + " " + author.getLastName() +
+							", Issue Language: " + newspaper.getIssueLanguage());
+				}
 			}
 		}
 	}
 
 	public static void ListItemsnotyetreturned(String customerid) {
 		readTransactionsFromFile();
-		
+
+		// Count first, then report once. The old version printed the "no items"
+		// message for every transaction that did not match, so a customer with
+		// one outstanding item saw the message repeated for all the others.
+		boolean any = false;
 
 		for (Transaction transaction : transactions) {
-			if (transaction.getCustomer().getCustomerID().equalsIgnoreCase(customerid)&&transaction.getCheckInDate() == null) {
+			if (transaction.getCustomer().getCustomerID().equalsIgnoreCase(customerid)
+					&& transaction.getCheckInDate() == null) {
+				if (!any) {
+					System.out.println("Items that are not yet returned:");
+					any = true;
+				}
 				Item item = transaction.getItem();
-				System.out.println("items that not yet returned:");
 				System.out.println("Item ID:" + item.getID() +
 						"--- Title: " + item.getTitle() +
-						"--- Due date: " + transaction.getCheckOutDate());
-			}else {
-				System.out.println("There is now items not yet returned");
+						"--- Checked out: " + transaction.getCheckOutDate());
 			}
 		}
 
-
+		if (!any) {
+			System.out.println("There are no items outstanding for this customer.");
+		}
 	}
 
 	public static void saveAndExit() {
