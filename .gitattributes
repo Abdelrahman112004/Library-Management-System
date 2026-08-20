@@ -1,0 +1,5 @@
+# Normalise line endings in the repository to LF, and check out whatever is
+# native to the platform. The original Java files were committed with CRLF,
+# so the commit that adds this file shows them as fully rewritten; diffs after
+# that are clean.
+* text=auto
